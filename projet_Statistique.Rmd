@@ -1,0 +1,937 @@
+---
+title: "Rapport de groupe en Sciences des Données 2 + Bases de données"
+author:
+  'Randriamisanta Fehizoro, Abdraman Mahamat, LE Quentin, LE Maxime, Jad El Hage '
+
+date: "12/09/2022"
+output:
+  pdf_document:
+    fig_crop: no
+    fig_caption: yes
+    keep_md: yes
+    keep_tex: yes
+    md_extensions: +raw_attribute
+    number_sections: yes
+    pandoc_args:
+    - --top-level-division="chapter"
+    - --bibliography="references.bib"
+    template: template.tex
+    toc: yes
+    toc_depth: 1
+toc-title: "Table des matières"
+bibliography: references.bib
+coursecode: TV15MI-TV25MI
+csl: iso690-author-date-fr-no-abstract.csl
+Acknowledgements:
+- Nos plus sincères remerciements vont à notre encadrant pédagogique pour les conseils
+  avisés sur notre travail.
+biblio-style: elsarticle-harv
+session: 2022
+team: 2
+Abstract: Nous avons décidé de ne pas faire de résumé pour ce rapport.
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE,message=FALSE,tidy = FALSE)
+
+```
+
+
+
+
+
+# Introduction {.label:s-intro}
+
+
+Le monde subit une croissance démographique depuis le dernier siècle, et la contamination de l’environnement a souillé notre planète.
+
+
+\bigskip
+
+\centering
+
+**Cela signifie-t-il qu'il y a une corrélation entre l’accroissement de la population et la pollution ?**
+
+\bigskip
+
+\justifying
+
+A travers nos bases de données, nous suivrons une analyse statistique de la pollution en partant d’une échelle globale, en étudiant l’émission de gaz à 
+effets de serre totale par pays sur plusieurs années. On triera nos données pour montrer ceux qui jouent le plus grand rôle dans l’émission de ces gaz . 
+Ensuite on se lancera vers une analyse locale en posant dans notre spectre la 
+France afin d'analyser la répartition des gaz en fonction des secteurs 
+(agriculture, tertiaire,...) et en fonction du nombre d'habitants
+
+
+
+
+# Base de données
+
+## Descriptif des tables
+- **Emissions de gaz à effet de serre par commune :** Sur les 12 colonnes de la table, nous en avons gardé 10. On a supprimé les colonnes « Autres transports » 
+et « Autres transports internationaux » car il y a trop de lignes vides pour 
+ces colonnes.
+Nombre de colonnes : 10
+Nombre de lignes : 35779
+Description des colonnes (type) :
+
+  -	Id_commune : c’est la clé (code officiel géographique par l’INSEE, de type entier)
+  -	Nom_commune : caractères (nom de chaque commune)
+  -	Agriculture, biomasse_hors_total,dechets,industrie_energie,industrie_
+  hors_energie, residence, routier, tertiare : numériques 
+(Les valeurs sont exprimées en tonne d’équivalent CO2 )
+
+Lien: [GES par commune](https://www.data.gouv.fr/fr/datasets/inventaire-de-gaz-a-effet-de-serre-territorialise/#resources)
+
+
+- **Nombre d'habitants par commune :** Sur les 10 colonnes de la table, nous en 
+avons gardé 3 (nom_commune, id_commune et population_totale). Toutes les lignes 
+ont été gardées pour garantir la cohérence des différentes tables.
+Nombre de colonnes : 10
+Nombre de lignes : 34996
+Description des colonnes (type) :
+  -	Id_commune :  c’est la clé (code officiel géographique par l’INSEE, de type entier)
+  -	Nom_commune : caractères (nom de chaque commune)
+  -	Population_totale : entier  (nombre d’habitants pour chaque commune)
+Lien: [Nombre d'habitants par commune](https://www.insee.fr/fr/statistiques/4265429?sommaire=4265511)
+
+- **Evolution de l’émission de GES par pays :** Sur les 15 colonnes de la table, nous en avons gardé 5. Nous avons trié la colonne « Unit » par « tonnes 
+d’équivalent CO2 » puis nous avons supprimé cette dernière. Dans la colonne 
+« pays », il y a d’autres enregistrements comme « Afrique » ou encore 
+« Union européenne ». Nous allons les supprimer sur pandas en utilisant la 
+fonction « merge ».
+Nombre de colonnes : 4
+Nombre de lignes : 31855
+Lien: [Emission de GES par pays](https://stats.oecd.org/viewhtml.aspx?datasetcode=AIR_GHG&lang=fr#)
+
+Description des colonnes (type) :
+  -	Code_pays : caractères composés de 3 lettres, unique pour chaque pays (clé)
+  -	Nom_pays : caractères
+  -	Annee : entier
+  -	Value : numériques (Les valeurs sont exprimées en tonne d’équivalent CO2 ). C’est la quantité de GES émise par un pays
+
+
+- **Population par pays et par date :** Pour cette table, nous avons 
+gardés toutes les colonnes et toutes les lignes. Nous n’allons supprimer des 
+lignes que lors de la création du MOD, en suppriment les enregistrements qui 
+ne sont pas des « pays »
+Nombre de colonnes : 3
+Nombre de lignes : 267
+Description des colonnes (type) :
+  -	Code_pays : caractères composés de 3 lettres, unique pour chaque pays (clé)
+  -	Nom_pays : caractères
+  -	Annee : entier
+Lien:  [Population par pays](https://donnees.banquemondiale.org/indicator/SP.POP.TOTL)
+
+
+
+
+
+
+
+
+
+
+## Modèles MCD et MOD
+
+Voici le modèle conceptuel et organisationnel de nos données
+
+![Relations.](mcd_mod.png){#uml width="14cm" height="12cm"}
+
+
+
+
+
+## Import des données 
+Avant l'import des données sur sql, on a trié les colonnes selon nos besoins
+(on n'a gardé que "GES" par exemple et on a éliminé les lignes avec "méthane").
+On avait des données par secteur pour les pays mais on a décidé, pour chaque 
+année allant de 1990 à 2018, de faire la  totale de GES par pays en regroupant
+les données par date. Notons que tous les pays n'ont pas de données pour chaque 
+date mais on a décidé de les garder et faire la moyenne des GES par pays pour une date donnée si on veut faire des analyses (on ne fait donc pas la somme de GES 
+de 1990 à 2018 mais la moyenne).
+On a verifié le type de variable de chaque attribut de chaque table et on a
+utilisé l'encodage UTF-8 pour chacun des fichiers csv qu'on a créés.
+On uniformisé les valeurs de GES total par pays en ne gardant pas de chiffres
+après la virgule.
+Pour les communes, on a gardé trois chiffres après la virgule pour les GES par 
+secteur. On a remplacé les id_commune de *l'Insee* par des entiers 
+ordonnés pour faciliter les futures jointures. On a aussi supprimé les doublons
+en utilisant pandas sur python.
+
+
+## Requêtes réalisées
+\bigskip
+
+On commence par appeler la base de données sur php myadmin 
+
+\scriptsize
+
+```{r}
+require(RMySQL)
+con <- dbConnect(RMySQL::MySQL(), host = "localhost",dbname="pollution",user = "root", password = "")
+```
+
+
+**1- Quelle est la commune qui émet le plus de GES ?**
+
+```{sql connection=con}
+
+select commune.nom_commune,enregistrement_commune.ges_total
+from commune,enregistrement_commune
+where commune.id_commune=enregistrement_commune.id_enregistrement and enregistrement_commune.ges_total=(select max(enregistrement_commune.ges_total) 
+from enregistrement_commune)
+```
+**2- Quelle est la commune qui émet le moins de GES ?**
+
+```{sql connection=con}
+
+select commune.nom_commune,enregistrement_commune.ges_total
+from commune,enregistrement_commune
+where commune.id_commune=enregistrement_commune.id_enregistrement and enregistrement_commune.ges_total=(select min(enregistrement_commune.ges_total) 
+from enregistrement_commune)
+
+```
+**3- Quelle est l'année où il y a le moins de GES en moyenne ?**
+
+```{sql connection=con}
+SELECT enregistrement_pays.habitants_par_pays as annee,AVG(enregistrement_pays.ges_total) as sm
+FROM enregistrement_pays
+GROUP BY enregistrement_pays.habitants_par_pays
+ORDER BY sm 
+LIMIT 1
+
+```
+
+
+**4- Quels sont les 5 pays les plus pollueurs ?**
+
+
+```{sql connection=con}
+SELECT pays.nom_pays,AVG(enregistrement_pays.ges_total) as ges_moyenne
+FROM pays,enregistrement_pays
+WHERE pays.id_pays=enregistrement_pays.id_pays
+GROUP BY enregistrement_pays.id_pays
+ORDER BY ges_moyenne DESC
+LIMIT 5
+
+```
+
+
+**5- Quelle est le pourcentage de chaque secteur par rappor au total de tous les
+secteurs ?**
+
+
+
+```{sql echo=TRUE, connection=con,eval=F}
+
+SELECT ((SUM(enregistrement_commune.ges_agriculture)/(SELECT SUM(enregistrement_commune.ges_total) FROM enregistrement_commune))*100) as agriculture,(SUM(enregistrement_commune.ges_biomasse_hors_total)/(SELECT SUM(enregistrement_commune.ges_total) FROM enregistrement_commune)*100) as biomasse_hors_total,(SUM(enregistrement_commune.ges_dechets)/(SELECT SUM(enregistrement_commune.ges_total) FROM enregistrement_commune)*100) as dechets,(SUM(enregistrement_commune.ges_industrie_energie)/(SELECT SUM(enregistrement_commune.ges_total) FROM enregistrement_commune)*100) as industrie_energie,(SUM(enregistrement_commune.ges_industrie_hors_energie)/
+(SELECT SUM(enregistrement_commune.ges_total) FROM enregistrement_commune)*100)
+as industrie_hors_energie,(SUM(enregistrement_commune.ges_residence)/(SELECT SUM(enregistrement_commune.ges_total) FROM enregistrement_commune)*100) as residence,(SUM(enregistrement_commune.ges_routier)/(SELECT SUM(enregistrement_commune.ges_total) FROM enregistrement_commune)*100) as routier,SUM(enregistrement_commune.ges_tertiare)/(SELECT SUM(enregistrement_commune.ges_total)*100 FROM enregistrement_commune)FROM enregistrement_commune
+
+
+```
+\bigskip
+NB: On a remarqué que latex considère le symbole "/" suivi de certains 
+caractères comme des caractères spéciaux. C'est pour cela qu'on n'a pas évalué
+ce code.
+\bigskip
+**6- Quels sont les 5 pays les plus pollueurs en moyenne ?**
+
+```{sql connection=con}
+
+SELECT pays.nom_pays,AVG(enregistrement_pays.ges_total) as ges_moyenne
+FROM pays,enregistrement_pays
+WHERE pays.id_pays=enregistrement_pays.id_pays
+GROUP BY enregistrement_pays.id_pays
+ORDER BY ges_moyenne DESC
+LIMIT 5
+
+```
+
+
+
+**7- Quels sont les 5 pays les plus peuplés en moyenne ?**
+
+```{sql connection=con}
+SELECT pays.nom_pays,AVG(enregistrement_pays.habitants_par_pays) as nb_population
+FROM pays,enregistrement_pays
+WHERE pays.id_pays=enregistrement_pays.id_pays
+GROUP BY enregistrement_pays.id_pays
+ORDER BY nb_population DESC
+LIMIT 5
+```
+\bigskip
+**On peut voir que deux des pays les plus peuplés (Etats-Unis et Chine) font**
+**aussi partie du top 5 des pays les plus pollueurs mais on ne peut rien** 
+**conclure pour l'instant.**
+\bigskip
+
+**8- En quelle année l'emission du ges et le plus haut ?**
+
+```{sql connection=con}
+SELECT enregistrement_pays.habitants_par_pays as annee,AVG(enregistrement_pays.ges_total) as sm
+FROM enregistrement_pays
+GROUP BY enregistrement_pays.habitants_par_pays
+ORDER BY sm DESC
+LIMIT 1
+
+```
+
+
+**9- En quelle année l'emission du ges et le plus bas ?**
+
+
+```{sql connection=con}
+SELECT enregistrement_pays.habitants_par_pays as annee,AVG(enregistrement_pays.ges_total) as sm
+FROM enregistrement_pays
+GROUP BY enregistrement_pays.habitants_par_pays
+ORDER BY sm 
+LIMIT 1
+
+```
+
+**10- quelle etait la valeur de l'emission du pays plus gros poluer pendant** 
+**l'année où le ges était le plus haut ?**
+
+
+
+```{sql connection=con}
+SELECT pays.nom_pays,AVG(enregistrement_pays.ges_total) as ges_moyenne
+FROM pays,enregistrement_pays
+WHERE pays.id_pays=enregistrement_pays.id_pays AND enregistrement_pays.habitants_par_pays=(SELECT enregistrement_pays.habitants_par_pays as annee
+FROM enregistrement_pays
+GROUP BY enregistrement_pays.habitants_par_pays
+ORDER BY AVG(enregistrement_pays.ges_total) DESC
+LIMIT 1)
+GROUP BY enregistrement_pays.id_pays
+ORDER BY ges_moyenne DESC
+LIMIT 1
+
+```
+
+
+
+
+
+
+\normalsize
+# Matériel et Méthodes
+
+## Logiciels
+On a utilisé Excel pour l'uniformisation des données et le filtrage des 
+colonnes. La bibliothèque Pandas de python a été d'une grande aide pour le 
+nettoyage complet des données et les jointures des tables car on a croisé
+plusieurs jeux de données . R a été utilisé pour mettre en relation tous les
+logiciels et pour produire le rapport final. Voici les informations sur les 
+versions des logiciels et sur l'ordinateur qui a servi pour les analyses.
+
+**ordinateur:**	
+  - système d'exploitation: Windows 
+  
+  
+  - modèle: VivoBook_ASUSLaptop X421DA_D413DA
+  
+  
+  - version: 10.0.19044 Build 19044
+  
+  
+  - processeur: AMD Ryzen 5 3500U with Radeon Vega Mobile Gfx, 2100MHz, 
+4 cœur(s), 8 processeur(s) logique(s)
+
+
+  - RAM: 8 Go
+
+**Python:**
+
+  - version: 3.9.12
+
+**R:**
+-   version: 4.2.1 (2022-06-23 ucrt)
+
+
+-   mode: desktop
+
+
+\bigskip
+
+ 
+## Modélisation statistique
+Le principal outil statistique que nous avons utilisé est le coefficient de 
+corrélation de Pearson. Cet outil nous a permis de déterminer l’intensité de l'association linéaire entre la variable "nombre d'habitants" et "quantité de
+gaz à effet de serre émis. La condition pour pouvoir l'utiliser, c'est que les
+deux variables doivent avoir une variance non nulle (pour éviter la division
+par zéro). Rappelons que plus ce coefficient est proche de -1 ou +1, plus l'association entre les deux variables est forte. La corrélation est 
+géneralement exprimé avec un autre chiffre que l'on nomme p. En fait, avant de
+d'interpreter les résultats, on suppose qu'il n'existe pas de relation linéaire
+entre les deux variables (hypothèse nulle). La valeur p est la probabilité d'observer un coefficient de corrélation différent de zéro  lorsqu'on fait l'hypothèse nulle est vraie. Si p est faible, on pourrait rejeter l'hypothèse
+nulle. En général, le seuil de rejet d'une hypothèse nulle est une valeur p 
+de 0,05. Pour que le coefficient de corrélation puisse être interprété, la 
+valeur de p doit être plus petite que 0,05.
+La limite du coefficient de corrélation est qu'il ne peut résumer la qualité 
+d’une régression multiple. Il n'est pas robuste car il est très sensible aux 
+valeurs aberrantes.
+
+
+
+# Analyse et résultats
+## Echelle mondiale
+
+Premièrement, on va voir un choropleth pour avoir une vision globale de 
+l'émission de GES dans le monde en 2014 car c'est la date à laquelle on a le 
+plus de données. Voici une partie du code:
+
+```{r include=FALSE}
+# Jointure des dataframes pour avoir les noms en anglais des pays
+
+
+# importation des libraires
+library(dplyr)
+library(maps)  
+library(ggplot2) 
+library(mapproj)  
+require(RMySQL) 
+
+# Creation variables
+enregistrement_pays<-dbReadTable(conn =con, "enregistrement_pays")
+enregistrement_commune<-dbReadTable(conn=con,"enregistrement_commune")
+commune<-dbReadTable(conn=con,"commune")
+
+# On rajoute les noms en anglais dans enregistrement_pays
+data=read.csv2(file = "C:/PAUL VALERY 3/informatique/mini projet/tables_csv/nom_pays_anglais.csv",header = TRUE)
+
+
+df=merge(x=data,y=enregistrement_pays,by="id_pays")
+
+# On garde seulement les données pour 2014
+df <- subset.data.frame(df, df$année == 2014)
+#df
+
+# On ne garde pas antarctique
+world<-map_data("world")
+world <- map_data("world") %>%
+  filter(region != "Antarctica")
+
+#On va joindre ce dataframe avec la carte du monde du package map
+
+
+carte_ges=merge(x =world,y=df,by="region",all.x =TRUE)
+#carte_ges
+#After merging, the order has changed, which would lead to polygons drawn in
+# the incorrect order. So, we'll sort the data.
+
+
+carte_ges=arrange(carte_ges,group,order)
+
+
+
+
+```
+
+
+\scriptsize
+
+```{r,fig.cap="\\label{fig:choropleth}GES sur un choropleth."}
+
+choropleth=
+  ggplot(carte_ges,aes(long,lat,group=group,fill=ges_total))+geom_polygon(color="black")+coord_fixed()+ coord_map(xlim=c(-180,180))+labs(title = "Quantité de GES par pays en 2014 (eq CO2)",caption = "Data source: stats.oecd.org",subtitle = "pour 54 pays")+scale_fill_viridis_c(trans="log",na.value = "lightgrey")
+
+choropleth
+
+
+```
+
+\normalsize
+
+Dans carte et avec les données qu'on a, on peut voir que c'est l'Islande qui
+émet le moins de GES et que la chine émet le plus. Une conclusion trop hative 
+serait de dire les grands pays émette plus de GES que les petits pays.Mais
+vu l’absence de données,on s’appuiera plutôt sur un diagramme pour mieux 
+interpréter les résultats.
+
+
+```{r fig.height=4, fig.width=5,echo=F}
+
+tab <- dbReadTable(con, "enregistrement_pays")
+attach(tab)
+df_groupe_annee<-tab%>% group_by(id_pays) %>% summarise(moyenne_ges=mean(ges_total))
+df_tri<-df_groupe_annee%>% arrange(desc(moyenne_ges))
+df_tri<-head(df_tri,10)
+
+
+X=df_tri$id_pays
+Y=df_tri$moyenne_ges
+library(ggplot2)
+ggplot(df_tri,aes(x=X, y=Y, fill=as.factor(X)))+
+        geom_bar(position=position_dodge(), stat="identity")+
+        ylab("moyenne ges")+xlab("pays")
+
+
+```
+
+La Chine et les États Unis se démarquent et occupent la première et deuxième position, ces deux pays sont les plus gros polluant. 
+
+
+Pour avoir une meilleure idée de la répartition, on va aussi analyser 
+les données
+de 2018 avec des calculs et des boxplots.
+
+
+voici un résumé statistique de GES émis par tous les pays en 2018, c'est à 
+dire l'année la plus récente pour laquelle on a des données.
+
+```{r}
+enregistrement_pays<-dbReadTable(conn =con, "enregistrement_pays")
+
+ges_2018<-subset.data.frame(enregistrement_pays, enregistrement_pays$année == 2018)
+summary(ges_2018["ges_total"])
+
+```
+
+\bigskip
+
+
+Voici le boxplot pour visualiser ces données.
+
+\scriptsize
+
+```{r echo=FALSE,fig.cap="\\label{fig:boxplot}boxplot: GES et population."}
+library(gridExtra)
+library(ggplot2)
+
+ges_2018<-subset.data.frame(enregistrement_pays, enregistrement_pays$année == 2018)
+#ges_2018
+
+ges=ggplot(ges_2018,aes(x="Par pays en 2018",y =ges_total)) + 
+  geom_boxplot() +
+  stat_summary(fun = "mean", geom = "point", shape = 8,
+               size = 2, color = "red")+geom_boxplot(fill = "lightblue")+theme(text = element_text(size = 8))+scale_y_log10()
+
+population=ggplot(ges_2018,aes(x="Par pays en 2018",y =habitants_par_pays)) + 
+  geom_boxplot() +
+  stat_summary(fun = "mean", geom = "point", shape = 8,
+               size = 2, color = "red")+geom_boxplot(fill = "lightblue")+theme(text = element_text(size = 8))+scale_y_log10()
+grid.arrange(grobs=(list(ges,population)),ncol=3,nrow=2,width=c(1,1),height=c(1,1),top = "Quantité de GES et nombre d'habitants en 2018")
+
+
+
+```
+\normalsize
+On va faire un graphe de corrélation pour représenter l'émission moyenne de
+GES par pays et la population moyenne par pays, groupé par date
+\scriptsize
+
+```{r echo=FALSE, fig.height=3, fig.width=4,fig.cap="\\label{fig:scatterplot}Nuage de points: émission moyenne de GES et population moyenne."}
+library(ggpubr)
+# regrouper le nombre d'habitants et le ges par année en les moyennant
+ges_groupe_annee<-enregistrement_pays%>% group_by(année)%>% summarise(moyenne_ges=mean(ges_total))
+habitants_groupe_annee<-enregistrement_pays%>% group_by(année)%>% summarise(moyenne_habitants=mean(habitants_par_pays))
+
+# Joindre les deux dataframe
+pop_et_ges_groupe_annee<-merge(ges_groupe_annee,habitants_groupe_annee,by="année")
+
+#Creation du nuage de points
+
+correlation=ggscatter(
+  pop_et_ges_groupe_annee, x = "moyenne_habitants", y = "moyenne_ges",
+   color = "black", shape =21,
+   , size = 3,     # Points color, shape and size
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"),  # Customize reg. line
+   conf.int = TRUE,      # Add confidence interval
+   cor.coef = TRUE,      # Add correlation coefficient. see ?stat_cor
+   cor.coeff.args = list(method = "pearson", label.x = 3, label.sep = "\n",label.x.npc =1,label.y.npc = "top",size=3))
+grid.arrange(grobs=(list(correlation)),width=c(1),height=c(1),
+             top="émission moyenne de GES et population")
+
+
+```
+
+\bigskip
+\normalsize
+Au niveau mondial, on a une forte corrélation positive entre le nombre 
+d'habitans et l'émission de GES. De plus la probabilité qu'il n'y ait pas de
+corrélation est très faible (2,1.e-08). Donc on peut conculer que plus le
+nombre d'habitants augmente, plus l'émission de GES augmente (donc plus on 
+pollue).
+
+
+
+
+## Echelle locale (communes France)
+
+Passons aux données sur les communes. Nous avons réalisé plusieurs graphiques.
+Notons que les codes sont founis dans les annexes.
+Pour commencer on représentera la répartition des différentes émissions de gaz en fonction de leurs secteurs respectifs à travers un graphe en camembert qui optimisera la visualisation. 
+
+
+```{r echo=F, fig.cap="\\label{fig:ggplot}ggplot."}
+#Import des packages
+library(ggplot2)
+library(scales)
+attach(enregistrement_commune)
+
+
+#Regroupement des moyennes dans chaque variables
+routier<- mean(ges_routier)
+tertiaire <- mean(ges_tertiare)
+residence <- mean(ges_residence)
+ihe <- mean(ges_industrie_hors_energie)
+ie <- mean(ges_industrie_energie)
+dechets <- mean(ges_dechets)
+biomasse <- mean(ges_biomasse_hors_total)
+agriculture <- mean(ges_agriculture)
+
+#Cr?ation d'un dataframe pour faire le graphique
+df <- data.frame(
+  secteurs = c("ges_routier","ges_tertiaire","ges_residence","ges_industrie_hors_energie","ges_industrie_energie","ges_dechets","ges_biomasse_hors_total","ges_agriculture"),
+  value = c(routier, tertiaire, residence, ihe, ie, dechets, biomasse, agriculture)
+  )
+
+#Barplot
+bp<- ggplot(df, aes(x="", y=value, fill=secteurs)) + geom_bar(width = 1, stat = "identity")+labs(title="Camembert représentant la part d'émissions de chaque secteur en France")
+
+#Camembert  + ajout des pourcentages
+#Calcul pour avoir les pourcentages
+total <- sum(c(routier, tertiaire, residence, ihe, ie, dechets, biomasse, agriculture))
+proutier <- tertiaire/total*100
+ptertiaire <- routier/total*100
+presidence <- residence/total*100
+pihe <- ihe/total*100
+pourcent_ie <- ie/total*100
+pdechets <- dechets/total*100
+pbiomasse <- biomasse/total*100
+pagriculture <- agriculture/total*100
+
+val <- round(c(proutier, ptertiaire, presidence, pihe, pourcent_ie, pdechets, pbiomasse, pagriculture), digits = 2)
+
+##Camembert
+pie <- bp + 
+  coord_polar("y", start=0) + geom_text(aes(y = value/3 + c(0, cumsum(value)[-length(value)]), label = percent(val/100)), size=5)
+pie
+
+
+#_________________________________________________________
+
+
+```
+\bigskip
+
+```{r echo=F}
+#Regroupement des moyennes dans chaque variables
+value1 <- mean(ges_routier) + mean(ges_tertiare) + mean(ges_residence) +  mean(ges_industrie_energie) + mean(ges_biomasse_hors_total)
+
+value2 <- mean(ges_industrie_hors_energie) + mean(ges_dechets) + mean(ges_agriculture)
+
+#Cr?ation d'un dataframe pour faire le graphique
+df1 <- data.frame(
+  secteurs = c("ges routier, tertiaire, residence, industrie_energie, biomasse" ,"ges industrie_hors_energie, dechets ,agriculture"),
+  valeurs = c(value1, value2)
+  )
+
+#Bar plot
+bp<- ggplot(df1, aes(x="", y=valeurs, fill=secteurs)) + geom_bar(width = 1, stat = "identity")+labs(title="Camembert représentant la pourcentage d'émissions de groupe de secteurs")
+
+#Calcul pour avoir les pourcentages
+total1 <- sum(c(value1, value2))
+pvalue1 <- value1/total1*100
+pvalue2 <- value2/total1*100
+
+val1 <- round(c(pvalue1, pvalue2), digits = 2)
+
+##Camembert
+pie1 <- bp + 
+  coord_polar("y") + geom_text(aes(y = valeurs/3 + c(0, cumsum(valeurs)[-length(valeurs)]), label = percent(val1/100)), size=5)
+
+pie1
+```
+\normalsize
+On aperçoit que le secteur routier est facteur principal dans l’émission de GES, l’industrie et l’agriculture suivent juste après. 
+Ces données sont nécessaire pour nous rediriger par la suite :
+Nous analyserons postérieurement la corrélation entre l’émission de ces secteurs et le nombre d’habitants présents par commune.
+
+**Voici un résumé statistique du GES total par commune:**
+
+
+```{r}
+summary(enregistrement_commune["ges_total"])
+
+```
+
+Analysons alors la corrélation entre le nombre d'habitants par commune et 
+la quantité de GES émise par secteur. Nous analyserons aussi la corrélation
+pour l'émission de GES total de tous les secteurs de chaque commune et le 
+nombre d'habitants de chaque commune.
+
+
+\bigskip
+
+```{r echo=F,fig.cap="\\label{fig:scatterplot}Nuage de points: GES et population par commune."}
+#'ggpubr' provides some easy-to-use functions for creating and customizing 'ggplot2'
+#install.packages("ggpubr")
+
+library(ggpubr)
+library(gridExtra)
+
+
+
+
+#The easiest approach to assemble multiple plots on a page is to use the grid.arrange() function from the gridExtra package; in fact, that’s what we used for the previous figure. With grid.arrange(), one can reproduce the behaviour of the base functions par(mfrow=c(r,c)), specifying either the number of rows or columns,
+
+a<-ggscatter(enregistrement_commune, x = "habitants_commune", y = "ges_agriculture",
+   color = "black", shape =21,
+   , size = 1,     # Points color, shape and size
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"),  # Customize reg. line
+   conf.int = TRUE,      # Add confidence interval
+   cor.coef = TRUE,      # Add correlation coefficient. see ?stat_cor
+   cor.coeff.args = list(method = "pearson", label.x = 3, label.sep = ",",label.x.npc =1,label.y.npc = "top",size=2)
+   )+theme(text = element_text(size = 4))
+#+scale_x_log10()+scale_y_log10()
+
+b<-ggscatter(enregistrement_commune, x = "habitants_commune", y = "ges_biomasse_hors_total",
+   color = "black", shape =21,
+   , size = 1,     # Points color, shape and size
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"),  # Customize reg. line
+   conf.int = TRUE,      # Add confidence interval
+   cor.coef = TRUE,      # Add correlation coefficient. see ?stat_cor
+   cor.coeff.args = list(method = "pearson", label.x = 3, label.sep = ",",label.x.npc =1,label.y.npc = "top",size=2)
+   )+theme(text = element_text(size = 4))
+
+c=ggscatter(enregistrement_commune, x = "habitants_commune", y = "ges_dechets",
+   color = "black", shape =21,
+   , size = 1,     # Points color, shape and size
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"),  # Customize reg. line
+   conf.int = TRUE,      # Add confidence interval
+   cor.coef = TRUE,      # Add correlation coefficient. see ?stat_cor
+   cor.coeff.args = list(method = "pearson", label.x = 3, label.sep = ",",label.x.npc =1,label.y.npc = "top",size=2)
+   )+theme(text = element_text(size = 4))
+
+
+d=ggscatter(enregistrement_commune, x = "habitants_commune", y = "ges_industrie_energie",
+   color = "black", shape =21,
+   , size = 1,     # Points color, shape and size
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"),  # Customize reg. line
+   conf.int = TRUE,      # Add confidence interval
+   cor.coef = TRUE,      # Add correlation coefficient. see ?stat_cor
+   cor.coeff.args = list(method = "pearson", label.x = 3, label.sep = ",",label.x.npc =1,label.y.npc = "top",size=2)
+   )+theme(text = element_text(size = 4))
+
+e=ggscatter(enregistrement_commune, x = "habitants_commune", y = "ges_industrie_hors_energie",
+   color = "black", shape =21,
+   , size = 1,     # Points color, shape and size
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"),  # Customize reg. line
+   conf.int = TRUE,      # Add confidence interval
+   cor.coef = TRUE,      # Add correlation coefficient. see ?stat_cor
+   cor.coeff.args = list(method = "pearson", label.x = 3, label.sep = ",",label.x.npc =1,label.y.npc = "top",size=2)
+   )+theme(text = element_text(size = 4))
+
+f=ggscatter(enregistrement_commune, x = "habitants_commune", y = "ges_residence",
+   color = "black", shape =21,
+   , size = 1,     # Points color, shape and size
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"),  # Customize reg. line
+   conf.int = TRUE,      # Add confidence interval
+   cor.coef = TRUE,      # Add correlation coefficient. see ?stat_cor
+   cor.coeff.args = list(method = "pearson", label.x = 3, label.sep = ",",label.x.npc =1,label.y.npc = "top",size=2)
+   )+theme(text = element_text(size = 4))
+
+g=ggscatter(enregistrement_commune, x = "habitants_commune", y = "ges_routier",
+   color = "black", shape =21,
+   , size = 1,     # Points color, shape and size
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"),  # Customize reg. line
+   conf.int = TRUE,      # Add confidence interval
+   cor.coef = TRUE,      # Add correlation coefficient. see ?stat_cor
+   cor.coeff.args = list(method = "pearson", label.x = 3, label.sep = ",",label.x.npc =1,label.y.npc = "top",size=2)
+   )+theme(text = element_text(size = 4))
+
+h=ggscatter(enregistrement_commune, x = "habitants_commune", y = "ges_tertiare",
+   color = "black", shape =21,
+   , size = 1,     # Points color, shape and size
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"),  # Customize reg. line
+   conf.int = TRUE,      # Add confidence interval
+   cor.coef = TRUE,      # Add correlation coefficient. see ?stat_cor
+   cor.coeff.args = list(method = "pearson", label.x = 3, label.sep = ",",label.x.npc =1,label.y.npc = "top",size=2)
+   )+theme(text = element_text(size = 4))
+
+i=ggscatter(enregistrement_commune, x = "habitants_commune", y = "ges_total",
+   color = "black", shape =21,
+   , size = 1,     # Points color, shape and size
+   add = "reg.line",  # Add regressin line
+   add.params = list(color = "blue", fill = "lightgray"),  # Customize reg. line
+   conf.int = TRUE,      # Add confidence interval
+   cor.coef = TRUE,      # Add correlation coefficient. see ?stat_cor
+   cor.coeff.args = list(method = "pearson", label.x = 3, label.sep = ",",label.x.npc =1,label.y.npc = "top",size=2)
+   )+theme(text = element_text(size = 4))
+
+
+grid.arrange(grobs=(list(i,a,b,c,d,e,f,g,h)),ncol=3,nrow=3,width=c(1,1,1,1),height=c(1,1,1,1))
+
+
+
+```
+\bigskip
+
+
+
+
+
+
+
+
+
+À l’exception du secteur agriculture et industrie_energie, tous les graphes ci-dessus possèdent un
+coefficient de corrélation positif et assez élevé et un p minime, ce 
+qui montre une corrélation positive entre le nombre d'habitants et le GES émis.
+A l'exception du secteur "dechets" et "agricultrue, tous les graphiques montrent
+un coefficient de Pearson supérieur à 0,8 et un p inférieur à 2,2.10^-16.
+La conclusion est la même qu'au niveau mondial, plus le nombre d'habitants
+par commune est élevé, plus le GES est lui aussi élevé.
+
+\normalsize
+
+\bigskip
+
+# Conclusion et perspectives {.label:ccl}
+
+Que ce soit au niveau mondial ou à une échelle réduite, on a vu que la quantité
+de GES émise est correlée positivement avec le nombre d'habitants. En réalité,
+nous n'avons utilisé que le coefficient de Pearson pour calculer la corrélation
+mais il nous a permis d'avoir une conclusion fiable car c'est un outil fait
+pour 2 variables. Une autre approche serait d'étudier,avec le nombre 
+d'habitants, la taille du pays ou encore le PIB.
+Par ailleurs, l’étude globale nous a permis de pointer du doigts les pays jouant le rôle principal dans l’émission de gaz, or d’après nos données on s'est rapidement rendu compte de l’impact dont la Chine et les Etats Unis infligent sur le monde, la pollution de leur habitations est largement supérieures aux autres pays, est-ce réellement leur habitation qui est responsable ? On n'oubliera pas de prendre en compte que la Chine est un pays industriel et que les Etats Unis sont la première puissance industrielle dans le monde. Pourra t on pointer du doigts la population et l’accuser comme responsable de cette pollution ?
+
+
+
+\bigskip
+
+
+
+# Bibliographie {-}
+
+<div id="refs"></div>
+
+\bibliographystyle{elsarticle-harv}
+\bibliography{references}
+
+# Annexes {-}
+
+## **Codes** {-}
+**code choropleth et jointure**
+```{r eval=F}
+# Jointure des dataframes pour avoir les noms en anglais des pays
+
+# importation des libraires
+library(dplyr)
+library(maps)  #Package maps provides lots of different map outlines and points for cities, etc.
+library(ggplot2) # ggplot2 provides the map_data() function
+library(mapproj)  # pour la projection
+
+require(RMySQL) 
+
+con <- dbConnect(RMySQL::MySQL(), host = "localhost",dbname="pollution",user = "root", password = "")
+
+# Creation variables
+enregistrement_pays<-dbReadTable(conn =con, "enregistrement_pays")
+enregistrement_commune<-dbReadTable(conn=con,"enregistrement_commune")
+commune<-dbReadTable(conn=con,"commune")
+
+# On rajoute les noms en anglais dans enregistrement_pays
+data=read.csv2(file = "C:/PAUL VALERY 3/informatique/mini projet/tables_csv/nom_pays_anglais.csv",header = TRUE)
+#data
+
+df=merge(x=data,y=enregistrement_pays,by="id_pays")
+
+# On garde seulement les données pour 2014
+df <- subset.data.frame(df, df$année == 2014)
+#df
+
+# On ne garde pas antarctique
+world<-map_data("world")
+world <- map_data("world") %>%
+  filter(region != "Antarctica")
+
+#On va joindre ce dataframe avec la carte du monde du package map
+carte_ges=merge(x =world,y=df,by="region",all.x =TRUE)
+carte_ges=arrange(carte_ges,group,order)
+
+```
+\bigskip
+
+**code diagramme en barre**
+```{r fig.height=4, fig.width=5,eval=FALSE}
+
+tab <- dbReadTable(con, "enregistrement_pays")
+attach(tab)
+df_groupe_annee<-tab%>% group_by(id_pays) %>% summarise(moyenne_ges=mean(ges_total))
+df_tri<-df_groupe_annee%>% arrange(desc(moyenne_ges))
+df_tri<-head(df_tri,10)
+
+
+X=df_tri$id_pays
+Y=df_tri$moyenne_ges
+library(ggplot2)
+ggplot(df_tri,aes(x=X, y=Y, fill=as.factor(X)))+
+        geom_bar(position=position_dodge(), stat="identity")+
+        ylab("moyenne mpg")+xlab("pays")
+
+
+```
+\bigskip
+**code camembert**
+\bigskip
+```{r, fig.cap="\\label{fig:ggplot}ggplot.", eval=FALSE}
+#Import des packages
+library(ggplot2)
+library(scales)
+
+#Regroupement des moyennes dans chaque variables
+routier<- mean(ges_routier)
+tertiaire <- mean(ges_tertiare)
+residence <- mean(ges_residence)
+ihe <- mean(ges_industrie_hors_energie)
+ie <- mean(ges_industrie_energie)
+dechets <- mean(ges_dechets)
+biomasse <- mean(ges_biomasse_hors_total)
+agriculture <- mean(ges_agriculture)
+
+#Cr?ation d'un dataframe pour faire le graphique
+df <- data.frame(
+  secteurs = c("ges_routier","ges_tertiaire","ges_residence","ges_industrie_hors_energie","ges_industrie_energie","ges_dechets","ges_biomasse_hors_total","ges_agriculture"),
+  value = c(routier, tertiaire, residence, ihe, ie, dechets, biomasse, agriculture)
+  )
+
+#Barplot
+bp<- ggplot(df, aes(x="", y=value, fill=secteurs)) + geom_bar(width = 1, stat = "identity")+labs(title="Camembert repr?sentant la part d'?missions de chaque secteur en France")
+
+#Camembert  + ajout des pourcentages
+#Calcul pour avoir les pourcentages
+total <- sum(c(routier, tertiare, residence, ihe, ie, dechets, biomasse, agriculture))
+proutier <- tertiare/total*100
+ptertiaire <- routier/total*100
+presidence <- residence/total*100
+pihe <- ihe/total*100
+pourcent_ie <- ie/total*100
+pdechets <- dechets/total*100
+pbiomasse <- biomasse/total*100
+pagriculture <- agriculture/total*100
+
+val <- round(c(proutier, ptertiaire, presidence, pihe, pourcent_ie, pdechets, pbiomasse, pagriculture), digits = 2)
+
+##Camembert
+pie <- bp + 
+  coord_polar("y", start=0) + geom_text(aes(y = value/3 + c(0, cumsum(value)[-length(value)]), label = percent(val/100)), size=5)
+pie
+```
+
+
+
+
